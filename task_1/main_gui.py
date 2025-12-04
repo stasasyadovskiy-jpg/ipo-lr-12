@@ -1,14 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 import json
 from datetime import datetime
 
-# Импорт классов из оригинального кода
-import sys
-import os
-sys.path.append('.')
-
-# Определяем минимальную версию классов на случай отсутствия main.py
 class Client:
     def __init__(self, name, cargo_weight, is_vip=False):
         self.name = name
@@ -29,10 +23,9 @@ class Ship(Vehicle):
         self.type = "Корабль"
 
 class Truck(Vehicle):
-    def __init__(self, color, vehicle_id, capacity, name=""):
+    def __init__(self, color, vehicle_id, capacity):
         super().__init__(vehicle_id, capacity)
         self.color = color
-        self.name = name
         self.type = "Грузовик"
 
 class TransportCompany:
@@ -52,7 +45,6 @@ def save_data(data):
     with open('data.json', 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-
 class TransportCompanyGUI:
     def __init__(self, root):
         self.root = root
@@ -65,52 +57,44 @@ class TransportCompanyGUI:
         self.update_tables()
     
     def load_data(self):
-        """Загрузка данных из файла"""
-        try:
-            data = load_data()
+        data = load_data()
+        
+        # Клиенты
+        for client_data in data.get("clients", []):
+            client = Client(
+                client_data.get("Имя", ""),
+                client_data.get("Вес груза", 0),
+                client_data.get("Вип статус", False)
+            )
+            self.company.clients.append(client)
+        
+        # Транспорт
+        for vehicle_data in data.get("vehicles", []):
+            vehicle_type = vehicle_data.get("Тип", "")
+            vehicle_id = vehicle_data.get("Номер транспортного средства", "")
+            capacity = vehicle_data.get("Возможная загруженность", 0)
             
-            # Клиенты
-            if "clients" in data:
-                for client_data in data["clients"]:
-                    client = Client(
-                        client_data.get("Имя", ""),
-                        client_data.get("Вес груза", 0),
-                        client_data.get("Вип статус", False)
-                    )
-                    self.company.clients.append(client)
+            if vehicle_type == "Корабль":
+                name = vehicle_data.get("Название", "")
+                vehicle = Ship(name, vehicle_id, capacity)
+            elif vehicle_type == "Грузовик":
+                color = vehicle_data.get("Цвет", "черный")
+                vehicle = Truck(color, vehicle_id, capacity)
+            else:
+                continue
             
-            # Транспорт
-            if "vehicles" in data:
-                for vehicle_data in data["vehicles"]:
-                    vehicle_type = vehicle_data.get("Тип", "")
-                    vehicle_id = vehicle_data.get("Номер транспортного средства", "")
-                    capacity = vehicle_data.get("Возможная загруженность", 0)
-                    
-                    if vehicle_type == "Корабль":
-                        name = vehicle_data.get("Название", "")
-                        vehicle = Ship(name, vehicle_id, capacity)
-                    elif vehicle_type == "Грузовик":
-                        color = vehicle_data.get("Цвет", "черный")
-                        vehicle = Truck(color, vehicle_id, capacity)
-                    else:
-                        vehicle = Vehicle(vehicle_id, capacity)
-                    
-                    vehicle.current_load = vehicle_data.get("Нынешняя загруженность", 0)
-                    self.company.vehicles.append(vehicle)
-        except:
-            pass
+            vehicle.current_load = vehicle_data.get("Нынешняя загруженность", 0)
+            self.company.vehicles.append(vehicle)
     
     def create_widgets(self):
-        """Создание интерфейса"""
-        # Верхняя панель с кнопками
+        # Верхняя панель
         toolbar = ttk.Frame(self.root)
         toolbar.pack(fill=tk.X, padx=5, pady=5)
         
-                # В toolbar после существующих кнопок добавьте:
         buttons = [
             ("➕ Клиент", self.add_client),
             ("🚚 Транспорт", self.add_vehicle),
-            ("📦 Загрузить", self.load_cargo_to_vehicle),  # НОВАЯ КНОПКА
+            ("📦 Загрузить", self.load_cargo_to_vehicle),
             ("📊 Распределить", self.optimize),
             ("📁 Экспорт", self.export_data),
             ("❓ О программе", self.show_about),
@@ -127,52 +111,46 @@ class TransportCompanyGUI:
         # Таблица клиентов
         clients_frame = ttk.Frame(notebook)
         notebook.add(clients_frame, text="Клиенты")
-        self.create_table(clients_frame, "clients")
+        self.create_client_table(clients_frame)
         
         # Таблица транспорта
         vehicles_frame = ttk.Frame(notebook)
         notebook.add(vehicles_frame, text="Транспорт")
-        self.create_table(vehicles_frame, "vehicles")
+        self.create_vehicle_table(vehicles_frame)
         
         # Статусная строка
         self.status = tk.StringVar(value="Готово")
         status_bar = ttk.Label(self.root, textvariable=self.status, relief=tk.SUNKEN)
         status_bar.pack(fill=tk.X, padx=5, pady=5)
     
-    def create_table(self, parent, table_type):
-        """Создание таблицы"""
-        if table_type == "clients":
-            columns = ("Имя", "Вес груза (кг)", "VIP")
-            tree = ttk.Treeview(parent, columns=columns, show="headings", height=15)
-            
-            for col in columns:
-                tree.heading(col, text=col)
-                tree.column(col, width=150, anchor=tk.CENTER)
-            
-            tree.bind("<Double-1>", lambda e: self.edit_client())
-            self.clients_tree = tree
-            
-        else:  # vehicles
-            columns = ("ID", "Тип", "Грузоподъемность", "Загружено", "Свободно")
-            tree = ttk.Treeview(parent, columns=columns, show="headings", height=15)
-            
-            col_widths = [100, 100, 120, 100, 100]
-            for col, width in zip(columns, col_widths):
-                tree.heading(col, text=col)
-                tree.column(col, width=width, anchor=tk.CENTER)
-            
-            tree.bind("<Double-1>", lambda e: self.edit_vehicle())
-            self.vehicles_tree = tree
+    def create_client_table(self, parent):
+        columns = ("Имя", "Вес груза (кг)", "VIP")
+        self.clients_tree = ttk.Treeview(parent, columns=columns, show="headings", height=15)
         
-        # Полоса прокрутки
-        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
+        for col in columns:
+            self.clients_tree.heading(col, text=col)
+            self.clients_tree.column(col, width=150, anchor=tk.CENTER)
         
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.clients_tree.yview)
+        self.clients_tree.configure(yscrollcommand=scrollbar.set)
+        self.clients_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    def create_vehicle_table(self, parent):
+        columns = ("ID", "Тип", "Грузоподъемность", "Загружено", "Свободно")
+        self.vehicles_tree = ttk.Treeview(parent, columns=columns, show="headings", height=15)
+        
+        col_widths = [100, 100, 120, 100, 100]
+        for col, width in zip(columns, col_widths):
+            self.vehicles_tree.heading(col, text=col)
+            self.vehicles_tree.column(col, width=width, anchor=tk.CENTER)
+        
+        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.vehicles_tree.yview)
+        self.vehicles_tree.configure(yscrollcommand=scrollbar.set)
+        self.vehicles_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     
     def update_tables(self):
-        """Обновление таблиц"""
         # Клиенты
         for item in self.clients_tree.get_children():
             self.clients_tree.delete(item)
@@ -186,15 +164,13 @@ class TransportCompanyGUI:
             self.vehicles_tree.delete(item)
         
         for vehicle in self.company.vehicles:
-            vehicle_type = getattr(vehicle, 'type', 'Транспорт')
             free = vehicle.capacity - vehicle.current_load
             self.vehicles_tree.insert("", tk.END, values=(
-                vehicle.vehicle_id, vehicle_type, vehicle.capacity,
+                vehicle.vehicle_id, vehicle.type, vehicle.capacity,
                 vehicle.current_load, free
             ))
     
     def add_client(self):
-        """Добавление клиента"""
         dialog = tk.Toplevel(self.root)
         dialog.title("Добавить клиента")
         dialog.geometry("300x250")
@@ -215,12 +191,8 @@ class TransportCompanyGUI:
             weight = weight_entry.get().strip()
             
             # Валидация
-            if len(name) < 2:
-                messagebox.showerror("Ошибка", "Имя должно быть не менее 2 символов")
-                return
-            
-            if not name.isalpha():
-                messagebox.showerror("Ошибка", "Имя должно содержать только буквы")
+            if len(name) < 2 or not name.replace(" ", "").isalpha():
+                messagebox.showerror("Ошибка", "Имя должно быть не менее 2 буквенных символов")
                 return
             
             try:
@@ -232,11 +204,9 @@ class TransportCompanyGUI:
                 messagebox.showerror("Ошибка", "Вес должен быть числом")
                 return
             
-            # Сохранение
             client = Client(name, weight, vip_var.get())
             self.company.clients.append(client)
             
-            # Сохранение в файл
             data = load_data()
             if "clients" not in data:
                 data["clients"] = []
@@ -254,129 +224,41 @@ class TransportCompanyGUI:
         
         ttk.Button(dialog, text="Сохранить", command=save).pack(pady=10)
         name_entry.focus()
-        
-        def perform_loading():
-            if not client_combo or not vehicle_combo:
-                messagebox.showerror("Ошибка", "Нет клиентов или транспорта")
-                dialog.destroy()
-                return
-            
-            client_name = client_var.get()
-            vehicle_id = vehicle_var.get()
-            
-            # Находим клиента
-            client = None
-            for c in self.company.clients:
-                if c.name == client_name:
-                    client = c
-                    break
-            
-            # Находим транспорт
-            vehicle = None
-            for v in self.company.vehicles:
-                if v.vehicle_id == vehicle_id:
-                    vehicle = v
-                    break
-            
-            if not client or not vehicle:
-                messagebox.showerror("Ошибка", "Не удалось найти клиента или транспорт")
-                dialog.destroy()
-                return
-            
-            # Проверяем, поместится ли груз
-            if vehicle.current_load + client.cargo_weight <= vehicle.capacity:
-                # Загружаем груз
-                vehicle.current_load += client.cargo_weight
-                vehicle.clients.append(client)
-                
-                # Обновляем файл данных
-                try:
-                    data = load_data()
-                    
-                    # Находим транспорт в данных
-                    for v_data in data.get("vehicles", []):
-                        if v_data.get("Номер транспортного средства") == vehicle_id:
-                            # Обновляем загрузку
-                            v_data["Нынешняя загруженность"] = vehicle.current_load
-                            
-                            # Добавляем клиента
-                            if "Клиенты" not in v_data:
-                                v_data["Клиенты"] = []
-                            
-                            v_data["Клиенты"].append({
-                                "name": client.name,
-                                "cargo_weight": client.cargo_weight,
-                                "is_vip": client.is_vip
-                            })
-                            break
-                    
-                    save_data(data)
-                    
-                    self.update_tables()
-                    self.status.set(f"Груз клиента '{client_name}' загружен в '{vehicle_id}'")
-                    messagebox.showinfo("Успех", 
-                                      f"Груз {client.cargo_weight} кг успешно загружен!\n"
-                                      f"Осталось места: {vehicle.capacity - vehicle.current_load} кг")
-                    dialog.destroy()
-                    
-                except Exception as e:
-                    messagebox.showerror("Ошибка", f"Не удалось сохранить данные: {str(e)}")
-            else:
-                free_space = vehicle.capacity - vehicle.current_load
-                messagebox.showwarning("Недостаточно места", 
-                                     f"Не хватает места в транспорте!\n"
-                                     f"Нужно: {client.cargo_weight} кг\n"
-                                     f"Свободно: {free_space} кг\n"
-                                     f"Выберите другой транспорт или распределите грузы")
-        
-        # Кнопки
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=20)
-        
-        if client_combo and vehicle_combo:
-            ttk.Button(btn_frame, text="Загрузить", command=perform_loading).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Отмена", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-        
-        
-        # Кнопки
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=20)
-        
-        if client_combo and vehicle_combo:
-            ttk.Button(btn_frame, text="Загрузить", command=perform_loading).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="Отмена", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+    
     def load_cargo_to_vehicle(self):
-            dialog = tk.Toplevel(self.root)
-            dialog.title("Загрузка груза")
-            dialog.geometry("400x300")
-            
-            # Выбор клиента
-            ttk.Label(dialog, text="Выберите клиента:").pack(pady=10)
-            
-            client_var = tk.StringVar()
-            if not self.company.clients:
-                ttk.Label(dialog, text="Нет доступных клиентов", foreground="red").pack()
-                client_combo = None
-            else:
-                client_names = [c.name for c in self.company.clients]
-                client_combo = ttk.Combobox(dialog, textvariable=client_var, 
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Загрузка груза")
+        dialog.geometry("400x300")
+        dialog.transient(self.root)
+        
+        # Выбор клиента
+        ttk.Label(dialog, text="Выберите клиента:").pack(pady=10)
+        
+        client_var = tk.StringVar()
+        if not self.company.clients:
+            ttk.Label(dialog, text="Нет доступных клиентов", foreground="red").pack()
+            client_combo = None
+        else:
+            client_names = [c.name for c in self.company.clients]
+            client_combo = ttk.Combobox(dialog, textvariable=client_var, 
                                         values=client_names, state="readonly")
-                client_combo.pack(pady=5)
+            client_combo.pack(pady=5)
+            if client_names:
                 client_combo.current(0)
-            
-            # Выбор транспорта
-            ttk.Label(dialog, text="Выберите транспорт:").pack(pady=10)
-            
-            vehicle_var = tk.StringVar()
-            if not self.company.vehicles:
-                ttk.Label(dialog, text="Нет доступного транспорта", foreground="red").pack()
-                vehicle_combo = None
-            else:
-                vehicle_ids = [v.vehicle_id for v in self.company.vehicles]
-                vehicle_combo = ttk.Combobox(dialog, textvariable=vehicle_var,
-                                            values=vehicle_ids, state="readonly")
-                vehicle_combo.pack(pady=5)
+        
+        # Выбор транспорта
+        ttk.Label(dialog, text="Выберите транспорт:").pack(pady=10)
+        
+        vehicle_var = tk.StringVar()
+        if not self.company.vehicles:
+            ttk.Label(dialog, text="Нет доступного транспорта", foreground="red").pack()
+            vehicle_combo = None
+        else:
+            vehicle_ids = [v.vehicle_id for v in self.company.vehicles]
+            vehicle_combo = ttk.Combobox(dialog, textvariable=vehicle_var,
+                                        values=vehicle_ids, state="readonly")
+            vehicle_combo.pack(pady=5)
+            if vehicle_ids:
                 vehicle_combo.current(0)
         
         def perform_loading():
@@ -388,45 +270,26 @@ class TransportCompanyGUI:
             client_name = client_var.get()
             vehicle_id = vehicle_var.get()
             
-            # Находим клиента
-            client = None
-            for c in self.company.clients:
-                if c.name == client_name:
-                    client = c
-                    break
-            
-            # Находим транспорт
-            vehicle = None
-            for v in self.company.vehicles:
-                if v.vehicle_id == vehicle_id:
-                    vehicle = v
-                    break
+            # Находим клиента и транспорт
+            client = next((c for c in self.company.clients if c.name == client_name), None)
+            vehicle = next((v for v in self.company.vehicles if v.vehicle_id == vehicle_id), None)
             
             if not client or not vehicle:
                 messagebox.showerror("Ошибка", "Не удалось найти клиента или транспорт")
                 dialog.destroy()
                 return
             
-            # Проверяем, поместится ли груз
             if vehicle.current_load + client.cargo_weight <= vehicle.capacity:
-                # Загружаем груз
                 vehicle.current_load += client.cargo_weight
                 vehicle.clients.append(client)
                 
-                # Обновляем файл данных
                 try:
                     data = load_data()
-                    
-                    # Находим транспорт в данных
                     for v_data in data.get("vehicles", []):
                         if v_data.get("Номер транспортного средства") == vehicle_id:
-                            # Обновляем загрузку
                             v_data["Нынешняя загруженность"] = vehicle.current_load
-                            
-                            # Добавляем клиента
                             if "Клиенты" not in v_data:
                                 v_data["Клиенты"] = []
-                            
                             v_data["Клиенты"].append({
                                 "name": client.name,
                                 "cargo_weight": client.cargo_weight,
@@ -435,12 +298,9 @@ class TransportCompanyGUI:
                             break
                     
                     save_data(data)
-                    
                     self.update_tables()
                     self.status.set(f"Груз клиента '{client_name}' загружен в '{vehicle_id}'")
-                    messagebox.showinfo("Успех", 
-                                      f"Груз {client.cargo_weight} кг успешно загружен!\n"
-                                      f"Осталось места: {vehicle.capacity - vehicle.current_load} кг")
+                    messagebox.showinfo("Успех", f"Груз {client.cargo_weight} кг успешно загружен!")
                     dialog.destroy()
                     
                 except Exception as e:
@@ -450,10 +310,18 @@ class TransportCompanyGUI:
                 messagebox.showwarning("Недостаточно места", 
                                      f"Не хватает места в транспорте!\n"
                                      f"Нужно: {client.cargo_weight} кг\n"
-                                     f"Свободно: {free_space} кг\n"
-                                     f"Выберите другой транспорт или распределите грузы")
+                                     f"Свободно: {free_space} кг")
+        
+        # Кнопки
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=20)
+        
+        if self.company.clients and self.company.vehicles:
+            ttk.Button(btn_frame, text="Загрузить", command=perform_loading).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(btn_frame, text="Отмена", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+    
     def add_vehicle(self):
-        """Добавление транспорта"""
         dialog = tk.Toplevel(self.root)
         dialog.title("Добавить транспорт")
         dialog.geometry("300x300")
@@ -498,7 +366,6 @@ class TransportCompanyGUI:
                 messagebox.showerror("Ошибка", "Введите цвет или название")
                 return
             
-            # Создание транспорта
             if type_var.get() == "Грузовик":
                 vehicle = Truck(details, vehicle_id, capacity)
             else:
@@ -506,7 +373,6 @@ class TransportCompanyGUI:
             
             self.company.vehicles.append(vehicle)
             
-            # Сохранение в файл
             data = load_data()
             if "vehicles" not in data:
                 data["vehicles"] = []
@@ -515,15 +381,10 @@ class TransportCompanyGUI:
                 "Номер транспортного средства": vehicle_id,
                 "Возможная загруженность": capacity,
                 "Нынешняя загруженность": 0,
-                "Клиенты": []
+                "Клиенты": [],
+                "Тип": vehicle.type,
+                "Название" if isinstance(vehicle, Ship) else "Цвет": details
             }
-            
-            if isinstance(vehicle, Ship):
-                vehicle_data["Тип"] = "Корабль"
-                vehicle_data["Название"] = details
-            else:
-                vehicle_data["Тип"] = "Грузовик"
-                vehicle_data["Цвет"] = details
             
             data["vehicles"].append(vehicle_data)
             save_data(data)
@@ -536,18 +397,14 @@ class TransportCompanyGUI:
         id_entry.focus()
     
     def edit_client(self):
-        """Редактирование клиента"""
         selection = self.clients_tree.selection()
         if not selection:
             return
         
-        item = self.clients_tree.item(selection[0])
-        name = item['values'][0]
+        name = self.clients_tree.item(selection[0])['values'][0]
         
-        # Находим клиента
         for client in self.company.clients:
             if client.name == name:
-                # Простое удаление и повторное добавление
                 if messagebox.askyesno("Редактирование", f"Удалить клиента '{name}' и создать нового?"):
                     self.company.clients.remove(client)
                     self.update_tables()
@@ -555,15 +412,12 @@ class TransportCompanyGUI:
                 break
     
     def edit_vehicle(self):
-        """Редактирование транспорта"""
         selection = self.vehicles_tree.selection()
         if not selection:
             return
         
-        item = self.vehicles_tree.item(selection[0])
-        vehicle_id = item['values'][0]
+        vehicle_id = self.vehicles_tree.item(selection[0])['values'][0]
         
-        # Находим транспорт
         for vehicle in self.company.vehicles:
             if vehicle.vehicle_id == vehicle_id:
                 if messagebox.askyesno("Редактирование", f"Удалить транспорт '{vehicle_id}' и создать новый?"):
@@ -573,16 +427,10 @@ class TransportCompanyGUI:
                 break
     
     def optimize(self):
-        """Оптимизация распределения грузов"""
-        if not self.company.clients:
-            messagebox.showwarning("Ошибка", "Нет клиентов")
+        if not self.company.clients or not self.company.vehicles:
+            messagebox.showwarning("Ошибка", "Нет клиентов или транспорта")
             return
         
-        if not self.company.vehicles:
-            messagebox.showwarning("Ошибка", "Нет транспорта")
-            return
-        
-        # Простая оптимизация: сортируем по весу и распределяем
         vip_clients = sorted([c for c in self.company.clients if c.is_vip], 
                             key=lambda x: x.cargo_weight, reverse=True)
         regular_clients = sorted([c for c in self.company.clients if not c.is_vip], 
@@ -590,27 +438,19 @@ class TransportCompanyGUI:
         
         all_clients = vip_clients + regular_clients
         
-        # Сбрасываем загрузку
         for vehicle in self.company.vehicles:
             vehicle.current_load = 0
             vehicle.clients = []
         
-        # Распределение
         vehicles_sorted = sorted(self.company.vehicles, key=lambda v: v.capacity, reverse=True)
         
         for client in all_clients:
-            assigned = False
             for vehicle in vehicles_sorted:
                 if vehicle.current_load + client.cargo_weight <= vehicle.capacity:
                     vehicle.current_load += client.cargo_weight
                     vehicle.clients.append(client)
-                    assigned = True
                     break
-            
-            if not assigned:
-                self.status.set(f"Груз клиента {client.name} не поместился")
         
-        # Показываем результаты
         result = "Результаты распределения:\n"
         used_vehicles = 0
         total_cargo = 0
@@ -629,7 +469,6 @@ class TransportCompanyGUI:
         self.status.set("Распределение завершено")
     
     def export_data(self):
-        """Экспорт данных"""
         if not self.company.clients and not self.company.vehicles:
             messagebox.showwarning("Ошибка", "Нет данных для экспорта")
             return
@@ -660,22 +499,18 @@ class TransportCompanyGUI:
             messagebox.showerror("Ошибка", f"Не удалось сохранить файл: {str(e)}")
     
     def show_about(self):
-        """Окно 'О программе'"""
         about_text = (
             "Транспортная Компания\n\n"
             "Лабораторная работа №12\n"
-            "Разработчик: [Ваше ФИО]\n\n"
             "Программа для управления транспортной\n"
             "компанией и оптимизации грузоперевозок."
         )
         messagebox.showinfo("О программе", about_text)
 
-
 def main():
     root = tk.Tk()
     app = TransportCompanyGUI(root)
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
